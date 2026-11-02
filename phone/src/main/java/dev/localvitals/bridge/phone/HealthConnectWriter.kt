@@ -28,7 +28,10 @@ object HealthConnectWriter {
                             beatsPerMinute = p.b.toLong()
                         )
                     ),
-                    metadata = Metadata.unknownRecordingMethod()
+                    metadata = Metadata.manualEntry(
+                        clientRecordId = "hr-${p.t}",
+                        clientRecordVersion = 1
+                    )
                 )
             }
 
@@ -41,7 +44,10 @@ object HealthConnectWriter {
                     endTime = Instant.ofEpochMilli(p.e),
                     endZoneOffset = null,
                     count = p.s.toLong(),
-                    metadata = Metadata.unknownRecordingMethod()
+                    metadata = Metadata.manualEntry(
+                        clientRecordId = "st-${p.t}-${p.e}",
+                        clientRecordVersion = 1
+                    )
                 )
             }
 

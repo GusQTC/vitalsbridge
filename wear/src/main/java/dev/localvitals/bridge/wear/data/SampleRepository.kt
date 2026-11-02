@@ -53,6 +53,12 @@ interface SampleDao {
     @Query("SELECT * FROM steps WHERE syncedToPhone = 0 ORDER BY endMs ASC LIMIT 200")
     suspend fun pendingSteps(): List<StepsSample>
 
+    @Query("UPDATE heart_rate SET syncedToPhone = 1 WHERE syncedToPhone = 0 AND timestampMs <= :upTo")
+    suspend fun markHeartRateSyncedUpTo(upTo: Long)
+
+    @Query("UPDATE steps SET syncedToPhone = 1 WHERE syncedToPhone = 0 AND endMs <= :upTo")
+    suspend fun markStepsSyncedUpTo(upTo: Long)
+
     @Query("UPDATE heart_rate SET syncedToPhone = 1 WHERE id IN (:ids)")
     suspend fun markHeartRateSynced(ids: List<Long>)
 
@@ -136,6 +142,13 @@ class SampleRepository private constructor(context: Context) {
     suspend fun pendingSteps() = dao.pendingSteps()
     suspend fun markHeartRateSynced(ids: List<Long>) = dao.markHeartRateSynced(ids)
     suspend fun markStepsSynced(ids: List<Long>) = dao.markStepsSynced(ids)
+    suspend fun markPendingSyncedUpTo(upTo: Long) {
+        dao.markHeartRateSyncedUpTo(upTo)
+        dao.markStepsSyncedUpTo(upTo)
+    }
+    var lastPushedAt: Long
+        get() = prefs.getLong("lastPushedAt", 0L)
+        set(value) = prefs.edit().putLong("lastPushedAt", value).apply()
     suspend fun latestHeartRate() = dao.latestHeartRate()
 
     companion object {

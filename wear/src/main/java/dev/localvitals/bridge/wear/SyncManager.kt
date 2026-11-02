@@ -5,6 +5,7 @@ import androidx.health.services.client.HealthServices
 import androidx.health.services.client.data.PassiveListenerConfig
 import androidx.health.services.client.data.DataType
 import com.google.android.gms.wearable.NodeClient
+import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import dev.localvitals.bridge.wear.data.SampleRepository
 import kotlinx.coroutines.guava.await
@@ -41,6 +42,8 @@ data class PushResult(val deliveredNodes: Int, val hrSent: Int, val stepsSent: I
 object SyncManager {
 
     const val MESSAGE_PATH = "/vitals/push"
+    const val PULL_PATH = "/vitals/pull"
+    const val BATCH_PATH = "/vitals/batch"
     private const val HR_BATCH = 400
     private const val STEPS_BATCH = 300
 
@@ -67,61 +70,32 @@ object SyncManager {
     }
 
     /**
-     * Pushes all pending samples to every connected phone node. Marks samples
-     * synced only if at least one node acknowledged the message.
+     * Queues all pending samples as a DataItem batch. Delivery is handled by
+     * GMS (replicates whenever a phone connects — no node list needed, which
+     * matters because some Samsung watches report an empty connectedNodes).
+     * The phone DELETES the batch after writing it to Health Connect; the
+     * deletion event is our ack — see [WatchPullService.onDataChanged].
      */
     suspend fun pushPending(context: Context): PushResult {
         val repo = SampleRepository.get(context)
-        var deliveredNodes = 0
-        var totalHr = 0
-        var totalSteps = 0
+        val hr = repo.pendingHeartRate()
+        val steps = repo.pendingSteps()
+        if (hr.isEmpty() && steps.isEmpty()) return PushResult(0, 0, 0)
 
-        while (true) {
-            val hr = repo.pendingHeartRate()
-            val steps = repo.pendingSteps()
-            if (hr.isEmpty() && steps.isEmpty()) break
+        val payload = VitalsPayload(
+            hr = hr.map { HrPayload(t = it.timestampMs, b = it.bpm) },
+            steps = steps.map { StepsPayload(t = it.startMs, e = it.endMs, s = it.stepsValue) }
+        )
+        val bytes = json.encodeToString(payload).encodeToByteArray()
 
-            val payload = VitalsPayload(
-                hr = hr.map { HrPayload(t = it.timestampMs, b = it.bpm) },
-                steps = steps.map { StepsPayload(t = it.startMs, e = it.endMs, s = it.stepsValue) }
-            )
-            val bytes = json.encodeToString(payload).encodeToByteArray()
+        val request = PutDataMapRequest.create(BATCH_PATH).apply {
+            dataMap.putByteArray("payload", bytes)
+        }.asPutDataRequest()
+        Wearable.getDataClient(context).putDataItem(request).await()
 
-            val nodes = Wearable.getNodeClient(context).connectedNodes.await()
-            if (nodes.isEmpty()) {
-                android.util.Log.i("VitalsBridge", "pushPending: no connected phone, ${hr.size} hr / ${steps.size} steps stay pending")
-                break
-            }
-
-            var acked = 0
-            for (node in nodes) {
-                try {
-                    val listeners = Wearable.getMessageClient(context)
-                        .sendMessage(node.id, MESSAGE_PATH, bytes).await()
-                    if (listeners > 0) acked++
-                } catch (e: Exception) {
-                    android.util.Log.w("VitalsBridge", "sendMessage to ${node.displayName} failed", e)
-                }
-            }
-            if (acked == 0) {
-                android.util.Log.i("VitalsBridge", "pushPending: no phone acknowledged, keeping ${hr.size} hr / ${steps.size} steps pending")
-                break
-            }
-
-            deliveredNodes = maxOf(deliveredNodes, acked)
-            totalHr += hr.size
-            totalSteps += steps.size
-            repo.markHeartRateSynced(hr.map { it.id })
-            repo.markStepsSynced(steps.map { it.id })
-
-            // Loop again in case pending exceeded the batch caps.
-            if (hr.size < HR_BATCH && steps.size < STEPS_BATCH) break
-        }
-
-        val result = PushResult(deliveredNodes, totalHr, totalSteps)
-        if (result.sentSomething) {
-            android.util.Log.i("VitalsBridge", "pushPending: delivered hr=$totalHr steps=$totalSteps to $deliveredNodes node(s)")
-        }
-        return result
+        val now = System.currentTimeMillis()
+        repo.lastPushedAt = now
+        android.util.Log.i("VitalsBridge", "pushPending: queued hr=${hr.size} steps=${steps.size} (${bytes.size} bytes)")
+        return PushResult(1, hr.size, steps.size)
     }
 }

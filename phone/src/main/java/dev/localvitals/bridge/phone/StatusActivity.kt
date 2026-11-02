@@ -48,7 +48,11 @@ class StatusActivity : ComponentActivity() {
         }
 
         btnCheck.setOnClickListener { scope.launch { updateStatus() } }
-        scope.launch { updateStatus() }
+        scope.launch {
+            SyncPullWorker.schedulePeriodic(this@StatusActivity)
+            PullManager.pullNow(this@StatusActivity)
+            updateStatus()
+        }
     }
 
     private suspend fun updateStatus() {
