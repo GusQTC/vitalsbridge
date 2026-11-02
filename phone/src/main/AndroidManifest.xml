@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.WRITE_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.WRITE_STEPS" />
+
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+        <package android:name="tech.mmarca.openvitals" />
+    </queries>
+
+    <application
+        android:label="VitalsBridge Phone"
+        android:icon="@drawable/ic_launcher"
+        android:allowBackup="false">
+
+        <activity
+            android:name=".StatusActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+                <action android:name="android.health.connect.action.SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".WatchMessageService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data android:host="*" android:pathPrefix="/vitals" android:scheme="wear" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>
